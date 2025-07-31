@@ -30,11 +30,6 @@ pip install -r requirements.txt
    - Use default settings
 5. **Copy the Knowledge Base ID**
 
-#### Upload Documents:
-1. Upload PDF, TXT, or DOCX files to your S3 bucket
-2. In Knowledge Base, click **Sync** to process documents
-3. Wait for sync to complete (5-10 minutes)
-
 ### 4. Configure environment
 Modify the `.env` file with your AWS credentials:
 
