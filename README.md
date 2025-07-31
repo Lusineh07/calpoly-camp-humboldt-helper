@@ -25,7 +25,7 @@ pip install -r requirements.txt
 2. Click **Create knowledge base**
 3. Name: `chatbot-kb`
 4. Follow the setup wizard:
-   - Create an S3 bucket for your documents
+   - Choose **Web Crawler** as data source type
    - Choose **Amazon OpenSearch Serverless** for vector store
    - Use default settings
 5. **Copy the Knowledge Base ID**
