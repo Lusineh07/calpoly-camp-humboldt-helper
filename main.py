@@ -12,6 +12,7 @@ def setup_bedrock():
         aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
         aws_session_token=os.getenv('AWS_SESSION_TOKEN'),
         region_name=os.getenv('AWS_DEFAULT_REGION')
+        # region_name=os.getenv('AWS_REGION', 'us-west-2')  # Default to us-west-2 if not set
     )
 
 bedrock = setup_bedrock()
@@ -33,6 +34,7 @@ def build_history(messages, new_prompt):
 def query_bedrock(prompt, chat_history, kb_key):
     kb_id = KB_IDS[kb_key]
     model_arn = f'arn:aws:bedrock:{os.getenv("AWS_DEFAULT_REGION")}::foundation-model/{os.getenv("BEDROCK_MODEL_ID")}'
+    # model_arn = f'arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-3-5-sonnet-20240620-v1:0'
 
     response = bedrock.retrieve_and_generate(
         input={'text': (
@@ -68,11 +70,18 @@ def query_bedrock(prompt, chat_history, kb_key):
         refs = citation.get("retrievedReferences", [])
         if not refs:
             continue
-        ref = refs[0]
-        url = ref.get("location", {}).get("webLocation", {}).get("url") or ref.get("metadata", {}).get("x-amz-bedrock-kb-source-uri")
-        if not url:
-            continue
-        text_excerpt = ref['content']['text'].strip().split('\n')[0][:80]
-        references.append(f"- [{text_excerpt}...]({url})")
+
+        for ref in refs:
+            url = (
+                ref.get("location", {}).get("webLocation", {}).get("url") or
+                ref.get("metadata", {}).get("url")
+            )
+
+            # Only allow real web URLs (not S3 or None)
+            if not url or not url.startswith("http"):
+                continue
+
+            text_excerpt = ref.get("content", {}).get("text", "").strip().split("\n")[0][:80]
+            references.append(f"- [{text_excerpt}...]({url})")
 
     return answer, references
