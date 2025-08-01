@@ -1,10 +1,10 @@
-# main.py
 import os
 import boto3
 from dotenv import load_dotenv
 
 load_dotenv()
 
+# Initialize Bedrock client
 def setup_bedrock():
     return boto3.client(
         'bedrock-agent-runtime',
@@ -12,17 +12,31 @@ def setup_bedrock():
         aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
         aws_session_token=os.getenv('AWS_SESSION_TOKEN'),
         region_name=os.getenv('AWS_DEFAULT_REGION')
-        # region_name=os.getenv('AWS_REGION', 'us-west-2')  # Default to us-west-2 if not set
     )
 
 bedrock = setup_bedrock()
 
+# Knowledge base IDs from environment variables
 KB_IDS = {
     "Research": os.getenv("KNOWLEDGE_BASE_ID"),
     "Meeting Minutes": os.getenv("KNOWLEDGE_BASE_ID2"),
     "PeopleSoft Questions": os.getenv("KNOWLEDGE_BASE_ID3")
 }
 
+# Simple keyword-based classifier
+def classify_question(question: str) -> str:
+    question = question.lower()
+
+    if any(word in question for word in ["faculty", "journal", "research", "funding", "proposal", "experiment", "grant"]):
+        return "Research"
+    elif any(word in question for word in ["minutes", "meeting", "agenda", "committee", "vote", "motion"]):
+        return "Meeting Minutes"
+    elif any(word in question for word in ["peoplesoft", "registration", "grades", "enrollment", "class", "transcript", "student"]):
+        return "PeopleSoft Questions"
+    else:
+        return "Research"  # Default fallback
+
+# Format chat history
 def build_history(messages, new_prompt):
     history = ""
     for msg in messages:
@@ -31,14 +45,35 @@ def build_history(messages, new_prompt):
     history += f"User: {new_prompt}"
     return history
 
-def query_bedrock(prompt, chat_history, kb_key):
+def handle_small_talk(prompt: str) -> str | None:
+    prompt = prompt.lower().strip()
+
+    greetings = ["hi", "hello", "hey", "good morning", "good afternoon", "good evening"]
+    farewells = ["bye", "goodbye", "see you", "later", "talk to you later"]
+    gratitude = ["thank you", "thanks", "appreciate it", "thank u", "thx"]
+
+    if prompt in greetings:
+        return "Hello! How can I assist you today with research, meeting minutes, or PeopleSoft questions?"
+
+    if prompt in farewells:
+        return "Goodbye! Feel free to come back anytime if you have more questions."
+
+    if prompt in gratitude:
+        return "You're very welcome! Let me know if there's anything else I can help with."
+
+    return None  # Not small talk
+
+
+
+# Query Bedrock with auto-classification
+def query_bedrock(prompt, chat_history):
+    kb_key = classify_question(prompt)
     kb_id = KB_IDS[kb_key]
     model_arn = f'arn:aws:bedrock:{os.getenv("AWS_DEFAULT_REGION")}::foundation-model/{os.getenv("BEDROCK_MODEL_ID")}'
-    # model_arn = f'arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-3-5-sonnet-20240620-v1:0'
 
     response = bedrock.retrieve_and_generate(
         input={'text': (
-            "You are a helpful assistant. "
+            "You are Humboldt Helper, an AI assistant for California State Polytechnic University, Humboldt."
             "Always respond in clear, concise sentences. "
             "Use the conversation history to understand context. "
             "List any references separately after your response.\n\n"
@@ -52,8 +87,8 @@ def query_bedrock(prompt, chat_history, kb_key):
                 'generationConfiguration': {
                     'inferenceConfig': {
                         'textInferenceConfig': {
-                            'temperature': 0.7,
-                            'topP': 0.9,
+                            'temperature': 0.4,
+                            'topP': 0.7,
                             'maxTokens': 700
                         }
                     }
@@ -76,8 +111,6 @@ def query_bedrock(prompt, chat_history, kb_key):
                 ref.get("location", {}).get("webLocation", {}).get("url") or
                 ref.get("metadata", {}).get("url")
             )
-
-            # Only allow real web URLs (not S3 or None)
             if not url or not url.startswith("http"):
                 continue
 

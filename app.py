@@ -2,7 +2,10 @@
 import streamlit as st
 import os
 import base64
-from main import query_bedrock, build_history, KB_IDS
+from main import query_bedrock, build_history, KB_IDS, handle_small_talk
+
+# --- Page Setup ---
+st.set_page_config(page_title="Humboldt Helper", layout="wide")
 
 # --- Load CSS ---
 with open("style.css") as f:
@@ -24,9 +27,6 @@ logo_base64 = get_base64_image(os.path.join(img_dir, "Logo.png"))
 user_icon = get_base64_image(os.path.join(img_dir, "user_icon.png"))
 bot_icon = get_base64_image(os.path.join(img_dir, "robot_icon.png"))
 
-# --- Page Setup ---
-st.set_page_config(page_title="Humboldt Helper", layout="wide")
-
 # --- Sidebar HTML ---
 st.markdown(f"""
 <div class="fixed-sidebar">
@@ -42,7 +42,6 @@ st.markdown(f"""
 st.markdown("""
 <div class="main-content">
     <div class="main-title">Humboldt Helper</div>
-    <p class="instruction">Please select a category, type your question, and click the send button.</p>
     <div class="subtitle">Let the exploration begin.</div>
 </div>
 """, unsafe_allow_html=True)
@@ -53,43 +52,57 @@ if "messages" not in st.session_state:
         "role": "assistant",
         "content": "Hi! I’m Humboldt Helper. I can help you locate research documents, funding opportunities, and resources regarding research. How can I assist you?"
     }]
-
 # --- Show Chat History ---
 for msg in st.session_state.messages:
     is_user = msg["role"] == "user"
     avatar = user_icon if is_user else bot_icon
     css_class = "message-user" if is_user else "message-assistant"
     sender = "You" if is_user else "Humboldt Helper"
+    alignment = "flex-end" if is_user else "flex-start"
+    avatar_html = f'<img src="data:image/png;base64,{avatar}" style="width: 32px; height: 32px;">'
 
-    st.markdown(f"""
-    <div class="message-bubble">
-        <img src="data:image/png;base64,{avatar}">
-        <div class="message-content {css_class}">
-            <div style="font-size: 13px; font-weight: bold;">{sender}</div>
-            <div style="font-size: 14px; font-family: Inter, sans-serif;">{msg["content"]}</div>
+    if is_user:
+        # User message on right
+        st.markdown(f"""
+        <div class="message-bubble" style="justify-content: {alignment}; display: flex;">
+            <div style="max-width: 70%; text-align: right;" class="message-content {css_class}">
+                <div style="font-size: 13px; font-weight: bold;">{sender}</div>
+                <div style="font-size: 14px; font-family: Inter, sans-serif;">{msg["content"]}</div>
+            </div>
+            <div style="margin-left: 0.75rem;">{avatar_html}</div>
         </div>
-    </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
+    else:
+        # Assistant message on left
+        st.markdown(f"""
+        <div class="message-bubble" style="justify-content: {alignment}; display: flex;">
+            <div style="margin-right: 0.75rem;">{avatar_html}</div>
+            <div style="max-width: 70%;" class="message-content {css_class}">
+                <div style="font-size: 13px; font-weight: bold;">{sender}</div>
+                <div style="font-size: 14px; font-family: Inter, sans-serif;">{msg["content"]}</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
-# --- Input Form ---
-with st.form("chat_form", clear_on_submit=True):
-    st.markdown('<div class="search-bar">', unsafe_allow_html=True)
-    col1, col2, col3 = st.columns([1.5, 5, 0.6])
-    with col1:
-        category = st.selectbox("Select topic", list(KB_IDS.keys()), label_visibility="collapsed")
-    with col2:
-        user_input = st.text_input("Ask a question...", label_visibility="collapsed")
-    with col3:
-        submitted = st.form_submit_button("➤")
-    st.markdown('</div>', unsafe_allow_html=True)
 
-# --- On Submit ---
-if submitted and user_input.strip():
-    prompt = user_input.strip()
+# --- Padding so messages are not hidden behind input bar
+st.markdown("<div style='height: 120px;'></div>", unsafe_allow_html=True)
+
+# --- Chat Input (fixed bottom) ---
+prompt = st.chat_input("Ask a question...")
+
+if prompt:
     st.session_state.messages.append({"role": "user", "content": prompt})
+
     with st.spinner("Thinking..."):
-        chat_history = build_history(st.session_state.messages, prompt)
-        response, refs = query_bedrock(prompt, chat_history, category)
+        small_talk_reply = handle_small_talk(prompt)
+
+        if small_talk_reply:
+            response, refs = small_talk_reply, []
+        else:
+            chat_history = build_history(st.session_state.messages, prompt)
+            response, refs = query_bedrock(prompt, chat_history)
+
 
     full_response = response
     if refs:
@@ -99,4 +112,6 @@ if submitted and user_input.strip():
         "role": "assistant",
         "content": full_response
     })
+
+    # Rerun immediately to show updated message list with custom styling
     st.rerun()
